@@ -1,6 +1,7 @@
 
 import os
 import time
+import json
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -344,7 +345,8 @@ Study Notes:
                 st.error(f"Gemini Error: {e}")
 
 
-# ---------- QUIZ GENERATOR ----------
+
+# ----------- QUIZ GENERATOR -----------
 elif page == "🎯 Quiz Generator":
 
     st.markdown(
@@ -352,29 +354,118 @@ elif page == "🎯 Quiz Generator":
         unsafe_allow_html=True
     )
 
-    st.write("Plan your next study session.")
+    st.write("Generate AI-powered MCQs for your study topic.")
 
     topic = st.text_input(
         "Study Topic",
-        placeholder="e.g. Python basics, Machine Learning..."
+        placeholder="e.g. Python Basics, Machine Learning..."
     )
 
-    if st.button("Create Quiz Plan", use_container_width=True):
+    if st.button("✨ Generate Quiz", use_container_width=True):
 
         if topic.strip():
-            st.markdown("### 📌 Your Quiz Plan")
-            st.write(f"**Topic:** {topic}")
-            st.write("1. Review the main definitions.")
-            st.write("2. Practise five questions from your notes.")
-            st.write("3. Check your answers and revise difficult concepts.")
 
-            st.info(
-                "This section currently creates a study plan. "
-                "AI-generated quizzes are a future improvement."
-            )
+            try:
+                with st.spinner("Generating your quiz..."):
+
+                    prompt = f"""
+                    Create exactly 5 multiple-choice questions
+                    about: {topic}
+
+                    Return ONLY valid JSON in this format:
+                    {{
+                      "questions": [
+                        {{
+                          "question": "Question text",
+                          "options": ["A", "B", "C", "D"],
+                          "answer": "Exact correct option",
+                          "explanation": "Short explanation"
+                        }}
+                      ]
+                    }}
+
+                    Make questions educational and accurate.
+                    """
+
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt
+                    )
+
+                    result = response.text.strip()
+                    result = result.replace("```json", "")
+                    result = result.replace("```", "")
+
+                    quiz_data = json.loads(result)
+
+                st.session_state["generated_quiz"] = quiz_data
+                st.session_state["quiz_topic"] = topic
+
+            except Exception as e:
+                st.error(f"Quiz generation failed: {e}")
 
         else:
             st.warning("Please enter a study topic.")
+
+    if "generated_quiz" in st.session_state:
+
+        quiz_data = st.session_state["generated_quiz"]
+
+        st.markdown("### 📝 Your AI Quiz")
+        st.write(f"Topic: {st.session_state['quiz_topic']}")
+
+        with st.form("quiz_answer_form"):
+
+            user_answers = {}
+
+            for i, question in enumerate(
+                quiz_data["questions"]
+            ):
+
+                st.markdown(
+                    f"**Q{i + 1}. {question['question']}**"
+                )
+
+                user_answers[i] = st.radio(
+                    "Choose your answer:",
+                    question["options"],
+                    key=f"quiz_question_{i}",
+                    index=None
+                )
+
+            submitted = st.form_submit_button(
+                "✅ Submit Quiz"
+            )
+
+        if submitted:
+
+            score = 0
+
+            for i, question in enumerate(
+                quiz_data["questions"]
+            ):
+
+                correct_answer = question["answer"]
+                selected_answer = user_answers[i]
+
+                if selected_answer == correct_answer:
+                    score += 1
+                    st.success(f"Q{i + 1}: Correct!")
+                else:
+                    st.error(
+                        f"Q{i + 1}: Correct answer: "
+                        f"{correct_answer}"
+                    )
+
+                st.write(
+                    f"Explanation: {question['explanation']}"
+                )
+
+            st.markdown(
+                f"### 🎉 Your Score: "
+                f"{score}/{len(quiz_data['questions'])}"
+            )
+
 
 
 # ---------- ABOUT PROJECT ----------
